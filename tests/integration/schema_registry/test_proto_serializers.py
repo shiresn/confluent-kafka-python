@@ -1,0 +1,108 @@
+import pytest
+
+from confluent_kafka import TopicPartition
+from confluent_kafka.error import ConsumeError
+from confluent_kafka.schema_registry.protobuf import ProtobufSerializer, ProtobufDeserializer
+from ..schema_registry.gen import NestedTestProto_pb2, TestProto_pb2, \
+    PublicTestProto_pb2
+from tests.integration.schema_registry.gen.DependencyTestProto_pb2 import DependencyMessage
+from tests.integration.schema_registry.gen.exampleProtoCriteo_pb2 import ClickCas
+
+
+@pytest.mark.parametrize("pb2, data", [
+    (TestProto_pb2.TestMessage, {'test_string': "abc",
+                                 'test_bool': True,
+                                 'test_bytes': b'look at these bytes',
+                                 'test_double': 1.0,
+                                 'test_float': 12.0}),
+    (PublicTestProto_pb2.TestMessage, {'test_string': "abc",
+                                       'test_bool': True,
+                                       'test_bytes': b'look at these bytes',
+                                       'test_double': 1.0,
+                                       'test_float': 12.0}),
+    (NestedTestProto_pb2.NestedMessage, {'user_id':
+                                         NestedTestProto_pb2.UserId(
+                                             kafka_user_id='oneof_str'),
+                                         'is_active': True,
+                                         'experiments_active': ['x', 'y', '1'],
+                                         'status': NestedTestProto_pb2.INACTIVE,
+                                         'complex_type':
+                                             NestedTestProto_pb2.ComplexType(
+                                                 one_id='oneof_str',
+                                                 is_active=False)})
+])
+def test_protobuf_message_serialization(kafka_cluster, pb2, data):
+    """
+    Validates that we get the same message back that we put in.
+
+    """
+    topic = kafka_cluster.create_topic("serialization-proto")
+    sr = kafka_cluster.schema_registry({'url': 'http://localhost:8081'})
+
+    value_serializer = ProtobufSerializer(sr, pb2.DESCRIPTOR)
+    value_deserializer = ProtobufDeserializer(pb2.DESCRIPTOR)
+
+    producer = kafka_cluster.producer(value_serializer=value_serializer)
+    consumer = kafka_cluster.consumer(value_deserializer=value_deserializer)
+    consumer.assign([TopicPartition(topic, 0)])
+
+    expect = pb2(**data)
+    producer.produce(topic, value=expect, partition=0)
+    producer.flush()
+
+    msg = consumer.poll()
+    actual = msg.value()
+
+    assert [getattr(expect, k) == getattr(actual, k) for k in data.keys()]
+
+
+@pytest.mark.parametrize("pb2, expected_refs", [
+    (TestProto_pb2.TestMessage, ['google/protobuf/descriptor.proto']),
+    (NestedTestProto_pb2.NestedMessage, ['google/protobuf/timestamp.proto']),
+    (DependencyMessage, ['NestedTestProto.proto', 'PublicTestProto.proto']),
+    (ClickCas, ['metadata_proto.proto', 'common_proto.proto'])
+])
+def test_protobuf_reference_registration(kafka_cluster, pb2, expected_refs):
+    """
+    Registers multiple messages with dependencies then queries the Schema
+    Registry to ensure the references match up.
+
+    """
+    sr = kafka_cluster.schema_registry({'url': 'http://localhost:8081'})
+    topic = kafka_cluster.create_topic("serialization-proto-refs")
+    serializer = ProtobufSerializer(sr, pb2.DESCRIPTOR)
+    producer = kafka_cluster.producer(key_serializer=serializer)
+
+    producer.produce(topic, key=pb2(), partition=0)
+    producer.flush()
+
+    registered_refs = sr.get_schema(serializer._schema_id).references
+
+    assert expected_refs.sort() == [ref.name for ref in registered_refs].sort()
+
+
+def test_protobuf_deserializer_type_mismatch(kafka_cluster):
+    """
+    Ensures an Exception is raised when deserializing an unexpected type.
+
+    """
+    pb2_1 = TestProto_pb2.TestMessage
+    pb2_2 = NestedTestProto_pb2.NestedMessage
+
+    sr = kafka_cluster.schema_registry({'url': 'http://localhost:8081'})
+    topic = kafka_cluster.create_topic("serialization-proto-refs")
+    serializer = ProtobufSerializer(sr, pb2_1.DESCRIPTOR)
+    deserializer = ProtobufDeserializer(pb2_2.DESCRIPTOR)
+
+    producer = kafka_cluster.producer(key_serializer=serializer)
+    consumer = kafka_cluster.consumer(key_deserializer=deserializer)
+    consumer.assign([TopicPartition(topic, 0)])
+
+    producer.produce(topic, key=pb2_1(), partition=0)
+    producer.flush()
+
+    with pytest.raises(ConsumeError, match="Message index mismatch. The"
+                                           " consumed Message does not match"
+                                           " this Deserializer's Message type"
+                                           r" \(KafkaError code -160\)"):
+        consumer.poll()

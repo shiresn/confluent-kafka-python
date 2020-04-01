@@ -30,6 +30,9 @@ from .schema_registry_client import (Schema,
                                      SchemaReference)
 from confluent_kafka.serialization import SerializationError
 
+# Converts an int to a bytes (opposite of ord)
+# Python3.chr() -> Unicode
+# Python2.chr() -> str(alias for bytes)
 if sys.version > '3':
     def _bytes(b):
         return bytes((b,))
@@ -105,7 +108,7 @@ def _schema_to_str(proto_file):
     Base64 encodes a FileDescriptor
 
     Args:
-        proto_file (Descriptor): FileDescriptor to encode.
+        proto_file (FileDescriptor): FileDescriptor to encode.
 
     Returns:
         str: Base64 encoded FileDescriptor
@@ -172,7 +175,7 @@ class ProtobufSerializer(object):
 
     """  # noqa: E501
     __slots__ = ['_auto_register', '_registry', '_known_subjects',
-                 'msg_index', '_proto_file', '_schema', '_schema_id',
+                 '_msg_index', '_schema', '_schema_id',
                  '_ref_reference_subject_func', '_subject_name_func']
     # default configuration
     _default_conf = {
@@ -206,13 +209,10 @@ class ProtobufSerializer(object):
 
         if len(conf_copy) > 0:
             raise ValueError("Unrecognized properties: {}"
-                             .format(conf_copy.keys()))
+                             .format(", ".format(conf_copy.keys())))
 
-        proto_file = descriptor.file
-
-        self._proto_file = proto_file
-        self.msg_index = _create_msg_index(descriptor)
-        self._schema = Schema(_schema_to_str(proto_file),
+        self._msg_index = _create_msg_index(descriptor)
+        self._schema = Schema(_schema_to_str(descriptor.file),
                               schema_type='PROTOBUF')
 
     @staticmethod
@@ -229,7 +229,7 @@ class ProtobufSerializer(object):
 
         """
         for value in index:
-            while (value & 0x7f) != 0:
+            while (value & ~0x7f) != 0:
                 buf.write(_bytes((value & 0x7f) | 0x80))
                 value >>= 7
             buf.write(_bytes(value))
@@ -296,7 +296,7 @@ class ProtobufSerializer(object):
             # Write the magic byte and schema ID in network byte order (big endian)
             fo.write(struct.pack('>bI', _MAGIC_BYTE, self._schema_id))
             # write the record index to the buffer
-            self._encode_index(fo, self.msg_index)
+            self._encode_index(fo, self._msg_index)
             # write the record itself
             fo.write(msg.SerializeToString())
             return fo.getvalue()
@@ -372,7 +372,7 @@ class ProtobufDeserializer(object):
             expect ([int]): expected message index
 
         Returns:
-            [int]: Message index. Not currently used.
+            [int]: Message index.
 
         Raises:
             SerializationError: If message indexes do not match
@@ -420,13 +420,16 @@ class ProtobufDeserializer(object):
 
         # SR wire protocol + msg_index length
         if len(value) < 6:
-            raise SerializationError("message is too small to decode {}".format(value))
+            raise SerializationError("Message too small. This message was not"
+                                     " produced with a Confluent"
+                                     " Schema Registry serializer")
 
         with _ContextStringIO(value) as payload:
             magic, schema_id = struct.unpack('>bI', payload.read(5))
             if magic != _MAGIC_BYTE:
-                raise SerializationError(
-                    "message does not start with magic byte")
+                raise SerializationError("Unknown magic byte. This message was"
+                                         " not produced with a Confluent"
+                                         " Schema Registry serializer")
 
             # Protobuf Messages are self-describing; no need to query schema
             # Move the reader cursor passed the index

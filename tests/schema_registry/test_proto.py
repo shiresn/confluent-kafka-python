@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import binascii
 from io import BytesIO
 
 import pytest
@@ -58,3 +59,19 @@ def test_index_serialization(pb2):
     buf.close()
 
     assert decoded_msg_idx == msg_idx
+
+
+@pytest.mark.parametrize("msg_idx, expected_hex", [
+    ([1, 0], b'00'),   # b2a_hex always returns hex pairs
+    ([1, 1], b'01'),
+    ([1, 127], b'7f'),
+    ([1, 128], b'8001')
+])
+def test_index_encoder(msg_idx, expected_hex):
+    buf = BytesIO()
+    ProtobufSerializer._encode_index(buf, msg_idx)
+    buf.flush()
+    # ignore array length prefix
+    buf.seek(1)
+
+    assert binascii.b2a_hex(buf.read()) == expected_hex

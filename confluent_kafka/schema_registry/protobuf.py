@@ -340,9 +340,11 @@ class ProtobufDeserializer(object):
         https://json-schema.org/understanding-json-schema/reference/generic.html
 
     """
+    __slots__ = ['_msg_class', '_msg_index']
+
     def __init__(self, descriptor):
-        self.msg_index = _create_msg_index(descriptor)
-        self.msg_class = MessageFactory().GetPrototype(descriptor)
+        self._msg_index = _create_msg_index(descriptor)
+        self._msg_class = MessageFactory().GetPrototype(descriptor)
 
     @staticmethod
     def _decode_uvarint(buf):
@@ -459,8 +461,8 @@ class ProtobufDeserializer(object):
 
             # Protobuf Messages are self-describing; no need to query schema
             # Move the reader cursor passed the index
-            _ = ProtobufDeserializer._decode_index(payload, self.msg_index)
-            msg = self.msg_class()
+            _ = ProtobufDeserializer._decode_index(payload, self._msg_index)
+            msg = self._msg_class()
             msg.ParseFromString(payload.read())
 
             return msg

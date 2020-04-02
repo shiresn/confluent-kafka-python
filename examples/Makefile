@@ -11,4 +11,4 @@ compile: $(PROTOS)
 	done
 
 clean:
-	rm -rf $(TARGET_DIR)/*_pb2.py
+	rm -f $(TARGET_DIR)/*_pb2.py

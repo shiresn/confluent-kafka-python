@@ -39,6 +39,7 @@ def test_create_index(pb2, coordinates):
     if coordinates == [0]:
         assert msg_idx == coordinates
     else:
+        assert msg_idx[0] == len(coordinates)
         assert msg_idx[1:] == coordinates
 
 
@@ -50,7 +51,7 @@ def test_create_index(pb2, coordinates):
 def test_index_serialization(pb2):
     msg_idx = _create_msg_index(pb2.DESCRIPTOR)
     buf = BytesIO()
-    ProtobufSerializer._encode_index(buf, msg_idx)
+    ProtobufSerializer._encode_uvarints(buf, msg_idx)
     buf.flush()
 
     # reset buffer cursor
@@ -65,13 +66,17 @@ def test_index_serialization(pb2):
     ([1, 0], b'00'),   # b2a_hex always returns hex pairs
     ([1, 1], b'01'),
     ([1, 127], b'7f'),
-    ([1, 128], b'8001')
+    ([1, 128], b'8001'),
+    ([1, 9223372036854775807], b'ffffffffffffffff7f')
 ])
 def test_index_encoder(msg_idx, expected_hex):
     buf = BytesIO()
-    ProtobufSerializer._encode_index(buf, msg_idx)
+    ProtobufSerializer._encode_uvarints(buf, msg_idx)
     buf.flush()
     # ignore array length prefix
     buf.seek(1)
-
     assert binascii.b2a_hex(buf.read()) == expected_hex
+
+    # reset reader and test decoder
+    buf.seek(0)
+    assert msg_idx == ProtobufDeserializer._decode_index(buf, msg_idx)

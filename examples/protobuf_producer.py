@@ -24,6 +24,7 @@ from uuid import uuid4
 
 from six.moves import input
 
+# Protobuf generated class; resides at ./user_pb2.py
 import user_pb2
 from confluent_kafka import SerializingProducer
 from confluent_kafka.serialization import StringSerializer

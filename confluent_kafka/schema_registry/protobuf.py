@@ -30,14 +30,28 @@ from .schema_registry_client import (Schema,
                                      SchemaReference)
 from confluent_kafka.serialization import SerializationError
 
-# Converts an int to a bytes (opposite of ord)
+# Converts an int to bytes (opposite of ord)
 # Python3.chr() -> Unicode
 # Python2.chr() -> str(alias for bytes)
 if sys.version > '3':
     def _bytes(b):
+        """
+        Convert int to bytes
+
+        Args:
+            b (int): int to format as bytes.
+
+        """
         return bytes((b,))
 else:
     def _bytes(b):
+        """
+        Convert int to bytes
+
+        Args:
+            b (int): int to format as bytes.
+
+        """
         return chr(b)
 
 
@@ -63,7 +77,7 @@ def _create_msg_index(msg_desc):
         msg_desc (MessageDescriptor): Message descriptor
 
     Returns:
-        [int]: Message
+        int: Message
 
     Raises:
         TypeError: If the message descriptor is malformed.
@@ -72,7 +86,7 @@ def _create_msg_index(msg_desc):
     msg_idx = deque()
     current = msg_desc
     found = False
-    # traverse tree upwardly it's root
+    # Traverse tree upwardly it's root
     while current.containing_type is not None:
         previous = current
         current = previous.containing_type
@@ -83,7 +97,7 @@ def _create_msg_index(msg_desc):
                 found = True
                 break
         if not found:
-            raise TypeError("Nested MessageDescriptor not found")
+            raise ValueError("Nested MessageDescriptor not found")
 
     found = False
     # find root's position in protofile
@@ -93,7 +107,7 @@ def _create_msg_index(msg_desc):
             found = True
             break
     if not found:
-        raise TypeError("MessageDescriptor not found in file")
+        raise ValueError("MessageDescriptor not found in file")
 
     # The root element at the 0 position does not need a length prefix.
     if len(msg_idx) == 1 and msg_idx[0] == 0:
@@ -123,19 +137,25 @@ class ProtobufSerializer(object):
     binary format for Protobuf.
 
     ProtobufSerializer configuration properties:
-    +-----------------------+----------+------------------------------------------------------+
-    | Property Name         | Type     | Description                                          |
-    +=======================+==========+======================================================+
-    |                       |          | Registers schemas automatically if not               |
-    | auto.register.schemas | bool     | previously associated with a particular subject.     |
-    |                       |          | Defaults to True.                                    |
-    +-----------------------|----------+------------------------------------------------------+
-    |                       |          | Callable(SerializationContext, str) -> str           |
-    |                       |          |                                                      |
-    | subject.name.strategy | callable | Instructs the ProtobufSerializer on how to construct |
-    |                       |          | Schema Registry subject names.                       |
-    |                       |          | Defaults to topic_subject_name_strategy.             |
-    +-----------------------+----------+------------------------------------------------------+
+    +---------------------------------+----------+------------------------------------------------------+
+    | Property Name                   | Type     | Description                                          |
+    +=================================+==========+======================================================+
+    |                                 |          | Registers schemas automatically if not               |
+    | auto.register.schemas           | bool     | previously associated with a particular subject.     |
+    |                                 |          | Defaults to True.                                    |
+    +---------------------------------|----------+------------------------------------------------------+
+    |                                 |          | Callable(SerializationContext, str) -> str           |
+    |                                 |          |                                                      |
+    | subject.name.strategy           | callable | Instructs the ProtobufSerializer on how to construct |
+    |                                 |          | Schema Registry subject names.                       |
+    |                                 |          | Defaults to topic_subject_name_strategy.             |
+    +---------------------------------+----------+------------------------------------------------------+
+    |                                 |          | Callable(SerializationContext, str) -> str           |
+    |                                 |          |                                                      |
+    | reference.subject.name.strategy | callable | Instructs the ProtobufSerializer on how to construct |
+    |                                 |          | Schema Registry subject names for Schema References  |
+    |                                 |          | Defaults to reference_subject_name_strategy          |
+    +---------------------------------+----------+------------------------------------------------------+
 
     Schemas are registered to namespaces known as Subjects which define how a
     schema may evolve over time. By default the subject name is formed by
@@ -209,26 +229,26 @@ class ProtobufSerializer(object):
 
         if len(conf_copy) > 0:
             raise ValueError("Unrecognized properties: {}"
-                             .format(", ".format(conf_copy.keys())))
+                             .format(", ".join(conf_copy.keys())))
 
         self._msg_index = _create_msg_index(descriptor)
         self._schema = Schema(_schema_to_str(descriptor.file),
                               schema_type='PROTOBUF')
 
     @staticmethod
-    def _encode_index(buf, index):
+    def _encode_uvarints(buf, uvarints):
         """
-        Writes the index to buf formatted as unsigned varints.
+        Writes each item in uvarints to buf formatted as unsigned varints.
 
         Args:
             buf (BytesIO): buffer to write index to
-            index [index]: Message index
+            uvarints (bytes): Message index
 
         Returns:
-            [bytes]: Serialized Message index
+            bytes: Serialized Message index
 
         """
-        for value in index:
+        for value in uvarints:
             while (value & ~0x7f) != 0:
                 buf.write(_bytes((value & 0x7f) | 0x80))
                 value >>= 7
@@ -288,7 +308,15 @@ class ProtobufSerializer(object):
         subject = self._subject_name_func(ctx, msg.DESCRIPTOR.full_name)
 
         if subject not in self._known_subjects:
-            self._schema.references = self.resolve_dependencies(ctx, msg.DESCRIPTOR.file)
+            self._schema.references = self.resolve_dependencies(
+                ctx, msg.DESCRIPTOR.file)
+
+            if self._auto_register:
+                self._schema_id = self._registry.register_schema(subject,
+                                                                 self._schema)
+            else:
+                self._schema_id = self._registry.lookup_schema(
+                    subject, self._schema).schema_id
 
         self._schema_id = self._registry.register_schema(subject, self._schema)
 
@@ -296,7 +324,7 @@ class ProtobufSerializer(object):
             # Write the magic byte and schema ID in network byte order (big endian)
             fo.write(struct.pack('>bI', _MAGIC_BYTE, self._schema_id))
             # write the record index to the buffer
-            self._encode_index(fo, self._msg_index)
+            self._encode_uvarints(fo, self._msg_index)
             # write the record itself
             fo.write(msg.SerializeToString())
             return fo.getvalue()
@@ -372,7 +400,7 @@ class ProtobufDeserializer(object):
             expect ([int]): expected message index
 
         Returns:
-            [int]: Message index.
+            int: Message index.
 
         Raises:
             SerializationError: If message indexes do not match

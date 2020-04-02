@@ -21,6 +21,7 @@
 #
 import argparse
 
+# Protobuf generated class; resides at ./user_pb2.py
 import user_pb2
 from confluent_kafka import DeserializingConsumer
 from confluent_kafka.schema_registry.protobuf import ProtobufDeserializer

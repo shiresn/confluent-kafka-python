@@ -238,11 +238,11 @@ class ProtobufSerializer(object):
     @staticmethod
     def _encode_uvarints(buf, uvarints):
         """
-        Writes each item in uvarints to buf formatted as unsigned varints.
+        Encodes each int as a uvarint onto buf
 
         Args:
             buf (BytesIO): buffer to write index to
-            uvarints (bytes): Message index
+            uvarints (int): ints to be encoded.
 
         Returns:
             bytes: Serialized Message index

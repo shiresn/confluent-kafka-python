@@ -318,8 +318,6 @@ class ProtobufSerializer(object):
                 self._schema_id = self._registry.lookup_schema(
                     subject, self._schema).schema_id
 
-        self._schema_id = self._registry.register_schema(subject, self._schema)
-
         with _ContextStringIO() as fo:
             # Write the magic byte and schema ID in network byte order (big endian)
             fo.write(struct.pack('>bI', _MAGIC_BYTE, self._schema_id))

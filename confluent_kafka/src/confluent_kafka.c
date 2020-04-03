@@ -204,7 +204,7 @@ static long KafkaError_hash (KafkaError *self) {
 	return self->code;
 }
 
-static PyTypeObject KafkaErrorType;
+PyTypeObject KafkaErrorType;
 
 
 
@@ -249,8 +249,41 @@ static PyObject* KafkaError_richcompare (KafkaError *self, PyObject *o2,
 	return result;
 }
 
+static PyObject *KafkaError_new (PyTypeObject *type, PyObject *args,
+                                 PyObject *kwargs) {
+        return type->tp_alloc(type, 0);
+}
 
-static PyTypeObject KafkaErrorType = {
+/**
+ * @brief Initialize a KafkaError object.
+ */
+static void KafkaError_init (KafkaError *self,
+			     rd_kafka_resp_err_t code, const char *str) {
+	self->code = code;
+        self->fatal = 0;
+        self->retriable = 0;
+        self->txn_requires_abort = 0;
+	if (str)
+		self->str = strdup(str);
+	else
+		self->str = NULL;
+}
+
+static int KafkaError_init0 (PyObject *selfobj, PyObject *args, PyObject *kwargs) {
+        KafkaError *self = (KafkaError *)selfobj;
+        int code;
+        const char *reason = NULL;
+ 
+        static char *kws[] = { "error", "reason",  NULL };
+
+        if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i|z", kws, &code, &reason))
+                return -1;
+
+        KafkaError_init(self, code, reason ? reason : rd_kafka_err2str(code));
+        return 0;
+}
+
+PyTypeObject KafkaErrorType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	"cimpl.KafkaError",      /*tp_name*/
 	sizeof(KafkaError),    /*tp_basicsize*/
@@ -271,7 +304,7 @@ static PyTypeObject KafkaErrorType = {
 	0,                         /*tp_setattro*/
 	0,                         /*tp_as_buffer*/
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
-        Py_TPFLAGS_BASE_EXC_SUBCLASS | Py_TPFLAGS_HAVE_GC, /*tp_flags*/
+        Py_TPFLAGS_HAVE_GC, /*tp_flags*/
 	"Kafka error and event object\n"
 	"\n"
 	"  The KafkaError class serves multiple purposes:\n"
@@ -279,8 +312,6 @@ static PyTypeObject KafkaErrorType = {
 	"  - Propagation of errors\n"
 	"  - Propagation of events\n"
 	"  - Exceptions\n"
-	"\n"
-	"  This class is not user-instantiable.\n"
 	"\n", /*tp_doc*/
         (traverseproc)KafkaError_traverse, /* tp_traverse */
 	(inquiry)KafkaError_clear, /* tp_clear */
@@ -296,25 +327,11 @@ static PyTypeObject KafkaErrorType = {
 	0,                         /* tp_descr_get */
 	0,                         /* tp_descr_set */
 	0,                         /* tp_dictoffset */
-	0,                         /* tp_init */
-	0                          /* tp_alloc */
+	KafkaError_init0,          /* tp_init */
+	0,                         /* tp_alloc */
+        KafkaError_new             /* tp_new */
 };
 
-
-/**
- * @brief Initialize a KafkaError object.
- */
-static void KafkaError_init (KafkaError *self,
-			     rd_kafka_resp_err_t code, const char *str) {
-	self->code = code;
-        self->fatal = 0;
-        self->retriable = 0;
-        self->txn_requires_abort = 0;
-	if (str)
-		self->str = strdup(str);
-	else
-		self->str = NULL;
-}
 
 /**
  * @brief Internal factory to create KafkaError object.

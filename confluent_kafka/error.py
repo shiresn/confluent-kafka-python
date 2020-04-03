@@ -15,11 +15,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from confluent_kafka.cimpl import KafkaException, KafkaError
 
 
-class ConsumeError(Exception):
-    __slots__ = ['message', 'reason', 'error_code']
-
+class ConsumeError(KafkaException):
     """
     Wraps all errors encountered during the consumption of a message.
 
@@ -30,23 +29,25 @@ class ConsumeError(Exception):
     Args:
         error (KafkaError): The error that occurred.
 
+        reason (str): Additional exception details.
+
         message (Message, optional): The message returned from the broker.
 
-        reason (str): String description of the error.
-
     """
-
     def __init__(self, error, reason=None, message=None):
-        self.error = error
-        if reason is None:
-            reason = error.str()
-
-        self.reason = reason
+        super(ConsumeError, self).__init__(KafkaError(error, reason))
         self.message = message
 
-    def __repr__(self):
-        return str(self)
 
-    def __str__(self):
-        return "{} (KafkaError code {})".format(self.reason,
-                                                self.error)
+class ProduceError(KafkaException):
+    """
+    Wraps all errors encountered encountered when producing of a message.
+
+    Args:
+        error (KafkaError): The error that occurred.
+
+        reason (str): Additional exception details.
+
+    """
+    def __init__(self, error, reason=None):
+        super(ProduceError, self).__init__(KafkaError(error, reason))

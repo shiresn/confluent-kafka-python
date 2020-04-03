@@ -19,6 +19,16 @@
 #
 # This is a simple example of the SerializingProducer using protobuf.
 #
+# To regenerate Protobuf classes you must first install the protobuf
+# compiler. Once installed you may call protoc directly or use make.
+#
+# See the protocol buffer docs for instructions on installing and using protoc.
+# https://developers.google.com/protocol-buffers/docs/pythontutorial
+#
+# After installing protoc execute the following command from the examples
+# directory to regenerate the user_pb2 module.
+# `make`
+#
 import argparse
 
 # Protobuf generated class; resides at ./user_pb2.py
@@ -31,7 +41,7 @@ from confluent_kafka.serialization import StringDeserializer
 def main(args):
     topic = args.topic
 
-    protobuf_deserializer = ProtobufDeserializer(user_pb2.User.DESCRIPTOR)
+    protobuf_deserializer = ProtobufDeserializer(user_pb2.User)
     string_deserializer = StringDeserializer('utf_8')
 
     consumer_conf = {'bootstrap.servers': args.bootstrap_servers,

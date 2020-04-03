@@ -19,6 +19,16 @@
 #
 # This is a simple example of the SerializingProducer using protobuf.
 #
+# To regenerate Protobuf classes you must first install the protobuf
+# compiler. Once installed you may call protoc directly or use make.
+#
+# See the protocol buffer docs for instructions on installing and using protoc.
+# https://developers.google.com/protocol-buffers/docs/pythontutorial
+#
+# After installing protoc execute the following command from the examples
+# directory to regenerate the user_pb2 module.
+# `make`
+#
 import argparse
 from uuid import uuid4
 
@@ -63,8 +73,8 @@ def main(args):
     schema_registry_conf = {'url': args.schema_registry}
     schema_registry_client = SchemaRegistryClient(schema_registry_conf)
 
-    protobuf_serializer = ProtobufSerializer(schema_registry_client,
-                                             user_pb2.User.DESCRIPTOR)
+    protobuf_serializer = ProtobufSerializer(user_pb2.User,
+                                             schema_registry_client)
 
     producer_conf = {'bootstrap.servers': args.bootstrap_servers,
                      'key.serializer': StringSerializer('utf_8'),

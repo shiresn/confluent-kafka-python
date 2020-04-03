@@ -21,6 +21,7 @@ import base64
 import struct
 from collections import deque
 
+from google.protobuf.message import DecodeError
 from google.protobuf.message_factory import MessageFactory
 
 from . import (_MAGIC_BYTE,
@@ -77,10 +78,10 @@ def _create_msg_index(msg_desc):
         msg_desc (MessageDescriptor): Message descriptor
 
     Returns:
-        int: Message
+        [int]: Message
 
     Raises:
-        TypeError: If the message descriptor is malformed.
+        ValueError: If the message descriptor is malformed.
 
     """
     msg_idx = deque()
@@ -180,10 +181,10 @@ class ProtobufSerializer(object):
     See ``Subject name strategy`` for additional details.
 
     Args:
+        message (Message): Protobuf Message.
+
         schema_registry_client (SchemaRegistryClient): Schema Registry
             client instance.
-
-        descriptor (Descriptor): Protobuf Message Descriptor.
 
         conf (dict): ProtobufSerializer configuration.
 
@@ -195,7 +196,7 @@ class ProtobufSerializer(object):
 
     """  # noqa: E501
     __slots__ = ['_auto_register', '_registry', '_known_subjects',
-                 '_msg_index', '_schema', '_schema_id',
+                 '_msg_class', '_msg_index', '_schema', '_schema_id',
                  '_ref_reference_subject_func', '_subject_name_func']
     # default configuration
     _default_conf = {
@@ -204,12 +205,7 @@ class ProtobufSerializer(object):
         'reference.subject.name.strategy': reference_subject_name_strategy
     }
 
-    def __init__(self, schema_registry_client, descriptor, conf=None):
-        self._registry = schema_registry_client
-        self._schema_id = None
-        # Avoid calling registry if schema is known to be registered
-        self._known_subjects = set()
-
+    def __init__(self, message, schema_registry_client, conf=None):
         # handle configuration
         conf_copy = self._default_conf.copy()
         if conf is not None:
@@ -231,6 +227,13 @@ class ProtobufSerializer(object):
             raise ValueError("Unrecognized properties: {}"
                              .format(", ".join(conf_copy.keys())))
 
+        self._registry = schema_registry_client
+        self._schema_id = None
+        # Avoid calling registry if schema is known to be registered
+        self._known_subjects = set()
+        self._msg_class = message
+
+        descriptor = message.DESCRIPTOR
         self._msg_index = _create_msg_index(descriptor)
         self._schema = Schema(_schema_to_str(descriptor.file),
                               schema_type='PROTOBUF')
@@ -242,7 +245,7 @@ class ProtobufSerializer(object):
 
         Args:
             buf (BytesIO): buffer to write index to
-            uvarints (int): ints to be encoded.
+            uvarints ([int]): ints to be encoded.
 
         Returns:
             bytes: Serialized Message index
@@ -305,6 +308,10 @@ class ProtobufSerializer(object):
         if msg is None:
             return None
 
+        if not isinstance(msg, self._msg_class):
+            raise ValueError("msg must be of type {} not {}"
+                             .format(self._msg_class, type(msg)))
+
         subject = self._subject_name_func(ctx, msg.DESCRIPTOR.full_name)
 
         if subject not in self._known_subjects:
@@ -334,7 +341,7 @@ class ProtobufDeserializer(object):
     Protobuf format to an object.
 
     Args:
-        descriptor (Descriptor): Protobuf Message Descriptor.
+        message (Message): Protobuf Message.
 
     .. _Schema definition:
         https://json-schema.org/understanding-json-schema/reference/generic.html
@@ -342,7 +349,8 @@ class ProtobufDeserializer(object):
     """
     __slots__ = ['_msg_class', '_msg_index']
 
-    def __init__(self, descriptor):
+    def __init__(self, message):
+        descriptor = message.DESCRIPTOR
         self._msg_index = _create_msg_index(descriptor)
         self._msg_class = MessageFactory().GetPrototype(descriptor)
 
@@ -363,15 +371,18 @@ class ProtobufDeserializer(object):
         """
         value = 0
         shift = 0
-        while True:
-            i = ProtobufDeserializer._read_byte(buf)
+        try:
+            while True:
+                i = ProtobufDeserializer._read_byte(buf)
 
-            value |= (i & 0x7f) << shift
-            shift += 7
-            if not (i & 0x80):
-                break
+                value |= (i & 0x7f) << shift
+                shift += 7
+                if not (i & 0x80):
+                    break
 
-        return value
+            return value
+        except EOFError:
+            raise EOFError("Unexpected EOF while reading index")
 
     @staticmethod
     def _read_byte(buf):
@@ -386,42 +397,25 @@ class ProtobufDeserializer(object):
         """
         i = buf.read(1)
         if i == b'':
-            raise EOFError("Unexpected EOF while reading index")
+            raise EOFError("Unexpected EOF encountered")
         return ord(i)
 
     @staticmethod
-    def _decode_index(buf, expect):
+    def _decode_index(buf):
         """
         Extracts message index from Schema Registry Protobuf formatted bytes.
 
         Args:
             buf (BytesIO): byte buffer
 
-            expect ([int]): expected message index
-
         Returns:
             int: Message index.
 
-        Raises:
-            SerializationError: If message indexes do not match
-
         """
-        expect_size = expect[0]
         size = ProtobufDeserializer._decode_uvarint(buf)
-        # fail fast, this is guaranteed not to be our expected message type.
-        if expect_size != size:
-            raise SerializationError("Message index mismatch. The consumed"
-                                     " Message does not match this"
-                                     " Deserializer's Message type")
-
         msg_index = [size]
         for _ in range(size):
             msg_index.append(ProtobufDeserializer._decode_uvarint(buf))
-
-        if msg_index != expect:
-            raise SerializationError("Message index mismatch. The consumed"
-                                     " Message does not match this"
-                                     " Deserializer's Message type")
 
         return msg_index
 
@@ -461,8 +455,11 @@ class ProtobufDeserializer(object):
 
             # Protobuf Messages are self-describing; no need to query schema
             # Move the reader cursor passed the index
-            _ = ProtobufDeserializer._decode_index(payload, self._msg_index)
+            _ = ProtobufDeserializer._decode_index(payload)
             msg = self._msg_class()
-            msg.ParseFromString(payload.read())
+            try:
+                msg.ParseFromString(payload.read())
+            except DecodeError as e:
+                raise SerializationError(str(e))
 
             return msg

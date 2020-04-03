@@ -29,6 +29,8 @@ __all__ = ['Deserializer',
            'SerializationError',
            'Serializer']
 
+from confluent_kafka.cimpl import KafkaException
+
 
 class MessageField(object):
     """
@@ -61,7 +63,7 @@ class SerializationContext(object):
         self.field = field
 
 
-class SerializationError(Exception):
+class SerializationError(KafkaException):
     """Generic error from serializer package"""
 
     def __init__(self, message):

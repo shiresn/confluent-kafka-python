@@ -15,6 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from confluent_kafka.cimpl import KafkaError, KafkaException
 
 from .cimpl import Producer as _ProducerImpl
 from .serialization import (MessageField,
@@ -152,16 +153,23 @@ class SerializingProducer(_ProducerImpl):
                 the application should call :py:func:`SerializingProducer.Poll`
                 and try again.
 
-             KafkaException: for other errors, see exception code
+             KafkaError: For all other errors
 
         """
         ctx = SerializationContext(topic, MessageField.KEY)
         if self._key_serializer is not None:
-            key = self._key_serializer(key, ctx)
-
+            try:
+                key = self._key_serializer(key, ctx)
+            except Exception as se:
+                raise KafkaException(
+                    KafkaError(KafkaError._KEY_SERIALIZATION, str(se)))
         ctx.field = MessageField.VALUE
         if self._value_serializer is not None:
-            value = self._value_serializer(value, ctx)
+            try:
+                value = self._value_serializer(value, ctx)
+            except Exception as se:
+                raise KafkaException(
+                    KafkaError(KafkaError._VALUE_SERIALIZATION, str(se)))
 
         super(SerializingProducer, self).produce(topic, value, key,
                                                  headers=headers,

@@ -56,7 +56,7 @@ def test_index_serialization(pb2):
 
     # reset buffer cursor
     buf.seek(0)
-    decoded_msg_idx = ProtobufDeserializer._decode_index(buf, msg_idx)
+    decoded_msg_idx = ProtobufDeserializer._decode_index(buf)
     buf.close()
 
     assert decoded_msg_idx == msg_idx
@@ -79,4 +79,4 @@ def test_index_encoder(msg_idx, expected_hex):
 
     # reset reader and test decoder
     buf.seek(0)
-    assert msg_idx == ProtobufDeserializer._decode_index(buf, msg_idx)
+    assert msg_idx == ProtobufDeserializer._decode_index(buf)

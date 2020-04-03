@@ -16,8 +16,8 @@
 # limitations under the License.
 #
 
-from confluent_kafka.cimpl import (KafkaError,
-                                   Consumer as _ConsumerImpl)
+from confluent_kafka.cimpl import (Consumer as _ConsumerImpl,
+                                   KafkaError)
 from .error import ConsumeError
 from .serialization import (SerializationError,
                             SerializationContext,
@@ -131,9 +131,9 @@ class DeserializingConsumer(_ConsumerImpl):
         if self._value_deserializer is not None:
             try:
                 value = self._value_deserializer(value, ctx)
-            except SerializationError as se:
+            except Exception as se:
                 raise ConsumeError(KafkaError._VALUE_DESERIALIZATION,
-                                   reason=se.message,
+                                   reason=str(se),
                                    message=msg)
 
         key = msg.key()
@@ -143,7 +143,7 @@ class DeserializingConsumer(_ConsumerImpl):
                 key = self._key_deserializer(key, ctx)
             except SerializationError as se:
                 raise ConsumeError(KafkaError._KEY_DESERIALIZATION,
-                                   reason=se.message,
+                                   reason=str(se),
                                    message=msg)
 
         msg.set_key(key)

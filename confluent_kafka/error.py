@@ -37,17 +37,3 @@ class ConsumeError(KafkaException):
     def __init__(self, error, reason=None, message=None):
         super(ConsumeError, self).__init__(KafkaError(error, reason))
         self.message = message
-
-
-class ProduceError(KafkaException):
-    """
-    Wraps all errors encountered encountered when producing of a message.
-
-    Args:
-        error (KafkaError): The error that occurred.
-
-        reason (str): Additional exception details.
-
-    """
-    def __init__(self, error, reason=None):
-        super(ProduceError, self).__init__(KafkaError(error, reason))

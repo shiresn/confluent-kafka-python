@@ -181,7 +181,7 @@ class ProtobufSerializer(object):
     See ``Subject name strategy`` for additional details.
 
     Args:
-        message (Message): Protobuf Message.
+        msg_type (GeneratedProtocolMessageType): Protobuf Message.
 
         schema_registry_client (SchemaRegistryClient): Schema Registry
             client instance.
@@ -205,7 +205,7 @@ class ProtobufSerializer(object):
         'reference.subject.name.strategy': reference_subject_name_strategy
     }
 
-    def __init__(self, message, schema_registry_client, conf=None):
+    def __init__(self, msg_type, schema_registry_client, conf=None):
         # handle configuration
         conf_copy = self._default_conf.copy()
         if conf is not None:
@@ -231,9 +231,9 @@ class ProtobufSerializer(object):
         self._schema_id = None
         # Avoid calling registry if schema is known to be registered
         self._known_subjects = set()
-        self._msg_class = message
+        self._msg_class = msg_type
 
-        descriptor = message.DESCRIPTOR
+        descriptor = msg_type.DESCRIPTOR
         self._msg_index = _create_msg_index(descriptor)
         self._schema = Schema(_schema_to_str(descriptor.file),
                               schema_type='PROTOBUF')

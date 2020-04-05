@@ -204,7 +204,7 @@ static long KafkaError_hash (KafkaError *self) {
 	return self->code;
 }
 
-PyTypeObject KafkaErrorType;
+static PyTypeObject KafkaErrorType;
 
 
 
@@ -283,7 +283,7 @@ static int KafkaError_init0 (PyObject *selfobj, PyObject *args, PyObject *kwargs
         return 0;
 }
 
-PyTypeObject KafkaErrorType = {
+static PyTypeObject KafkaErrorType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	"cimpl.KafkaError",      /*tp_name*/
 	sizeof(KafkaError),    /*tp_basicsize*/
@@ -304,7 +304,7 @@ PyTypeObject KafkaErrorType = {
 	0,                         /*tp_setattro*/
 	0,                         /*tp_as_buffer*/
 	Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE |
-        Py_TPFLAGS_HAVE_GC, /*tp_flags*/
+        Py_TPFLAGS_BASE_EXC_SUBCLASS | Py_TPFLAGS_HAVE_GC, /*tp_flags*/
 	"Kafka error and event object\n"
 	"\n"
 	"  The KafkaError class serves multiple purposes:\n"

@@ -56,3 +56,9 @@ def test_subclassing():
     err = MyExc()
     assert err.a_method() == "yes"
     assert isinstance(err, KafkaException)
+
+
+def test_kafkaError_custom_msg():
+    err = KafkaError(KafkaError._ALL_BROKERS_DOWN, "Mayday!")
+    assert err == KafkaError._ALL_BROKERS_DOWN
+    assert err.str() == "Mayday!"
